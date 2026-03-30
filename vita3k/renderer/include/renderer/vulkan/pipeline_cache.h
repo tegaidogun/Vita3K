@@ -121,6 +121,7 @@ public:
 
     PipelineCache(VKState &state);
     void init(bool support_rasterized_order_access);
+    void cleanup();
 
     void read_pipeline_cache();
     void save_pipeline_cache();

@@ -146,3 +146,10 @@ Address Debugger::get_watch_memory_addr(Address addr) {
 void Debugger::update_watches() {
     parent.set_memory_watch(watch_memory);
 }
+
+void Debugger::deinit() {
+    std::lock_guard<std::mutex> lock(mutex);
+    breakpoints.clear();
+    trampolines.clear();
+    watch_memory_addrs.clear();
+}

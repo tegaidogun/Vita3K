@@ -75,6 +75,7 @@ struct Debugger {
     void remove_trampoline(MemState &mem, uint32_t addr);
     Address get_watch_memory_addr(Address addr);
     void update_watches();
+    void deinit();
 
 private:
     std::mutex mutex;

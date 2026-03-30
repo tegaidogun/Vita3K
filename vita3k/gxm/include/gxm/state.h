@@ -23,6 +23,9 @@
 
 #include <map>
 #include <mutex>
+#include <thread>
+
+struct EmuEnvState;
 
 struct SceGxmInitializeParams {
     uint32_t flags = 0;
@@ -52,6 +55,7 @@ struct GxmState {
 
     Queue<DisplayCallback> display_queue;
     SceUID display_queue_thread;
+    std::thread display_host_thread;
 
     // global timestamp used by sync objects
     std::atomic<uint32_t> global_timestamp{ 1 };
@@ -62,4 +66,17 @@ struct GxmState {
 
     std::map<Address, MemoryMapInfo> memory_mapped_regions;
     std::mutex callback_lock;
+
+    void deinit() {
+        if (display_host_thread.joinable())
+            display_host_thread.join();
+
+        memory_mapped_regions.clear();
+        display_queue.reset();
+        params = {};
+        display_queue_thread = 0;
+        global_timestamp = 1;
+        last_display_global = 0;
+        notification_region = Ptr<uint32_t>(0);
+    }
 };

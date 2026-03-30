@@ -21,9 +21,10 @@
 
 #include "screen_filters.h"
 
+#include <atomic>
 #include <memory>
-
-struct SDL_Window;
+#include <mutex>
+#include <string>
 
 namespace renderer::vulkan {
 
@@ -32,7 +33,6 @@ struct VKState;
 class ScreenRenderer {
 public:
     VKState &state;
-    SDL_Window *window{};
 
     vk::SurfaceKHR surface;
     vk::SwapchainKHR swapchain;
@@ -78,17 +78,25 @@ public:
 
     ScreenRenderer(VKState &state);
 
-    bool create(SDL_Window *window);
+    bool create();
     // called after the logical device has been created
     bool setup();
     void cleanup();
 
-    bool acquire_swapchain_image(bool start_render_pass = false);
+    bool acquire_swapchain_image();
+    void begin_default_render_pass();
     void render(vk::ImageView image_view, vk::ImageLayout layout, const Viewport &viewport);
     void swap_window();
     void set_filter(const std::string_view &filter);
 
 private:
+    std::mutex pending_filter_mutex;
+    std::string pending_filter_name;
+    std::atomic<bool> has_pending_filter{ false };
+
+    void apply_pending_filter();
+    void apply_filter(const std::string_view &name);
+
     void create_render_pass();
     void create_layout_sync();
     void create_swapchain();
@@ -101,3 +109,9 @@ private:
     bool surface_matches_window_size();
 };
 } // namespace renderer::vulkan
+
+#ifdef __ANDROID__
+namespace renderer::vulkan {
+void set_surface_present(bool surface_present);
+}
+#endif

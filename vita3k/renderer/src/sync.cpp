@@ -97,6 +97,10 @@ void finish(State &state, Context *context) {
     // Add NOP then wait for it
     renderer::send_single_command(state, context, renderer::CommandOpcode::Nop, true, 1);
 
+    // unblock game threads if shutting down
+    if (state.render_abort.load(std::memory_order_relaxed))
+        return;
+
     // Wait for the VK wait thread to finish processing all pending requests.
     // Push a callback request on the queue and wait for it to be treated
     if (state.current_backend == Backend::Vulkan && state.features.enable_memory_mapping) {
@@ -118,8 +122,11 @@ int wait_for_status(State &state, int *status, int signal, bool wake_on_equal) {
         return *status;
     }
 
-    // Wait for it to get signaled
-    state.command_finish_one.wait(lock, [&]() { return (*status == signal) ^ wake_on_unequal; });
+    // unblock threads if shutting down
+    state.command_finish_one.wait(lock, [&]() {
+        return state.render_abort.load(std::memory_order_relaxed)
+            || ((*status == signal) ^ wake_on_unequal);
+    });
     return *status;
 }
 

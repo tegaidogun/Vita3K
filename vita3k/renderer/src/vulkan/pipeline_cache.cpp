@@ -369,6 +369,63 @@ void PipelineCache::save_pipeline_cache() {
     LOG_INFO("Pipeline cache saved");
 }
 
+void PipelineCache::cleanup() {
+    // stop threads
+    if (use_async_compilation)
+        set_async_compilation(false);
+
+    for (auto &[hash, pipeline] : pipelines)
+        state.device.destroy(pipeline);
+    pipelines.clear();
+
+    {
+        std::lock_guard<std::mutex> guard(shaders_mutex);
+        for (auto &[hash, shader] : shaders)
+            state.device.destroy(shader);
+        shaders.clear();
+    }
+
+    for (int i = 0; i < 2; i++)
+        for (int j = 0; j < 2; j++)
+            for (int k = 0; k < 2; k++) {
+                for (auto &[fmt, pass] : render_passes[i][j][k])
+                    state.device.destroy(pass);
+                render_passes[i][j][k].clear();
+            }
+
+    for (auto &[fmt, pass] : shader_interlock_pass)
+        state.device.destroy(pass);
+    shader_interlock_pass.clear();
+
+    for (int i = 0; i < 17; i++)
+        for (int j = 0; j < 17; j++) {
+            state.device.destroy(pipeline_layouts[i][j]);
+            pipeline_layouts[i][j] = nullptr;
+        }
+
+    state.device.destroy(uniforms_layout);
+    uniforms_layout = nullptr;
+    state.device.destroy(attachments_layout);
+    attachments_layout = nullptr;
+
+    state.device.destroy(vertex_textures_layout[0]);
+    vertex_textures_layout[0] = nullptr;
+    fragment_textures_layout[0] = nullptr;
+
+    for (int i = 1; i <= 16; i++) {
+        state.device.destroy(vertex_textures_layout[i]);
+        vertex_textures_layout[i] = nullptr;
+        state.device.destroy(fragment_textures_layout[i]);
+        fragment_textures_layout[i] = nullptr;
+    }
+
+    state.device.destroy(pipeline_cache);
+    pipeline_cache = nullptr;
+
+    next_pipeline_cache_save = std::numeric_limits<uint64_t>::max();
+    nb_worker_threads = 0;
+}
+
 // Vulkan structs used to specify a specialization constant
 // Also, booleans in SPIRV are 32bit wide
 static const vk::SpecializationMapEntry srgb_entry = {

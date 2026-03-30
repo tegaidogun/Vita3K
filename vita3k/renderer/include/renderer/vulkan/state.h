@@ -20,10 +20,14 @@
 #include <renderer/state.h>
 #include <renderer/types.h>
 
+#include <renderer/vulkan/overlay_renderer.h>
 #include <renderer/vulkan/pipeline_cache.h>
 #include <renderer/vulkan/screen_renderer.h>
 #include <renderer/vulkan/surface_cache.h>
 #include <renderer/vulkan/types.h>
+
+#include <chrono>
+#include <unordered_set>
 
 struct Config;
 
@@ -52,6 +56,7 @@ struct VKState : public renderer::State {
     vk::Device device;
 
     ScreenRenderer screen_renderer;
+    OverlayRenderer overlay_renderer;
 
     // Used for memory allocation and general query later.
     vk::PhysicalDevice physical_device;
@@ -110,20 +115,22 @@ struct VKState : public renderer::State {
     bool support_unix_fd_import = false;
 #endif
 
+    std::unordered_set<VKRenderTarget *> live_render_targets;
+    std::unordered_set<VKContext *> live_contexts;
+
     VKState(int gpu_idx);
 
     bool init() override;
-    bool create(SDL_Window *window, std::unique_ptr<renderer::State> &state, const Config &config);
+    bool create(std::unique_ptr<renderer::State> &state, const Config &config);
     void late_init(const Config &cfg, const std::string_view game_id, MemState &mem) override;
-    void cleanup();
+    void cleanup() override;
 
     TextureCache *get_texture_cache() override {
         return &texture_cache;
     }
 
-    void render_frame(const SceFVector2 &viewport_pos, const SceFVector2 &viewport_size, DisplayState &display,
-        const GxmState &gxm, MemState &mem) override;
-    void swap_window(SDL_Window *window) override;
+    void render_frame(DisplayState &display, const GxmState &gxm, MemState &mem) override;
+    void swap_window() override;
     std::vector<uint32_t> dump_frame(DisplayState &display, uint32_t &width, uint32_t &height) override;
 
     uint32_t get_features_mask() override;
@@ -140,7 +147,9 @@ struct VKState : public renderer::State {
     std::tuple<vk::Buffer, uint32_t> get_matching_mapping(const Ptr<void> address);
     // return the GPU buffer device address matching this one
     uint64_t get_matching_device_address(const Address address);
+#ifdef __ANDROID__
     std::vector<std::string> get_gpu_list() override;
+#endif
     std::string_view get_gpu_name() override;
     uint32_t get_gpu_version() override;
 

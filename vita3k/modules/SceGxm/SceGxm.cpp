@@ -910,12 +910,27 @@ static void display_entry_thread(EmuEnvState &emuenv) {
         SceGxmSyncObject *new_sync = display_callback->new_sync.get(emuenv.mem);
 
         // sceGxmDisplayQueueAddEntry waits for both buffers to complete
-        renderer::wishlist(old_sync, display_callback->old_sync_timestamp);
-        if (old_sync != new_sync)
-            renderer::wishlist(new_sync, display_callback->new_sync_timestamp);
+        // Use a timed wait so we can check for shutdown and avoid deadlocking during deinit
+        while (!renderer::wishlist(old_sync, display_callback->old_sync_timestamp, 100000)) {
+            if (emuenv.display.abort.load())
+                return;
+        }
+        if (old_sync != new_sync) {
+            while (!renderer::wishlist(new_sync, display_callback->new_sync_timestamp, 100000)) {
+                if (emuenv.display.abort.load())
+                    return;
+            }
+        }
 
         // now we can remove the thread from the display queue
         display_queue.pop();
+
+        // check if we should shut down before calling run_guest_function to avoid deadlock
+        if (emuenv.display.abort.load()) {
+            LOG_DEBUG("Abort detected after pop, freeing callback data and exiting");
+            free(emuenv.mem, display_callback->data);
+            break;
+        }
 
         // specify whether the call to SceDisplaySetFrameBuf is expected to do something
         emuenv.display.predicting = display_callback->frame_predicted;
@@ -2669,8 +2684,7 @@ EXPORT(int, sceGxmInitialize, const SceGxmInitializeParams *params) {
 
     // Reset the queue in case sceGxmTerminate was called earlier
     emuenv.gxm.display_queue.reset();
-    std::thread display_host_thread(display_entry_thread, std::ref(emuenv));
-    display_host_thread.detach();
+    emuenv.gxm.display_host_thread = std::thread(display_entry_thread, std::ref(emuenv));
     emuenv.gxm.notification_region = Ptr<uint32_t>(alloc(emuenv.mem, MiB(1), "SceGxmNotificationRegion"));
     memset(emuenv.gxm.notification_region.get(emuenv.mem), 0, MiB(1));
     return 0;

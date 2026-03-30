@@ -14,3 +14,6 @@ int handle_touch_event(SDL_TouchFingerEvent &finger);
 int toggle_touchscreen();
 int touch_get(const SceUID thread_id, EmuEnvState &emuenv, const SceUInt32 &port, SceTouchData *pData, SceUInt32 count, bool is_peek);
 void touch_set_force_mode(int port, bool mode);
+#ifdef __ANDROID__
+void set_rear_touchscreen(bool is_back);
+#endif

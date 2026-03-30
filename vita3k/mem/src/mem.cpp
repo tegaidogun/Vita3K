@@ -561,6 +561,50 @@ const char *mem_name(Address address, MemState &state) {
     return "";
 }
 
+void deinit_mem(MemState &state) {
+    const std::lock_guard<std::mutex> gen_lock(state.generation_mutex);
+
+    {
+        const std::lock_guard<std::mutex> prot_lock(state.protect_mutex);
+        state.protect_tree.clear();
+    }
+
+#ifdef _WIN32
+    BOOL ret = VirtualFree(state.memory.get(), TOTAL_MEM_SIZE, MEM_DECOMMIT);
+    LOG_CRITICAL_IF(!ret, "VirtualFree failed during deinit: {}", get_error_msg());
+#else
+    int ret = mprotect(state.memory.get(), TOTAL_MEM_SIZE, PROT_NONE);
+    LOG_CRITICAL_IF(ret == -1, "mprotect failed during deinit: {}", get_error_msg());
+    ret = madvise(state.memory.get(), TOTAL_MEM_SIZE, MADV_DONTNEED);
+    LOG_CRITICAL_IF(ret == -1, "madvise failed during deinit: {}", get_error_msg());
+#endif
+
+    const size_t table_length = TOTAL_MEM_SIZE / STANDARD_PAGE_SIZE;
+    memset(state.alloc_table.get(), 0, sizeof(AllocMemPage) * table_length);
+
+    state.allocator.reset();
+    state.allocator.set_maximum(table_length);
+
+    state.page_name_map.clear();
+
+    if (state.use_page_table) {
+        std::fill_n(state.page_table.get(), TOTAL_MEM_SIZE / KiB(4), state.memory.get());
+    }
+
+    state.external_mapping.clear();
+
+    const Address null_address = alloc_inner(state, 0, state.host_page_size / STANDARD_PAGE_SIZE, "null", true);
+    assert(null_address == 0);
+#ifdef _WIN32
+    DWORD old_protect = 0;
+    ret = VirtualProtect(state.memory.get(), state.host_page_size, PAGE_NOACCESS, &old_protect);
+    LOG_CRITICAL_IF(!ret, "VirtualProtect failed during deinit: {}", get_error_msg());
+#else
+    ret = mprotect(state.memory.get(), state.host_page_size, PROT_NONE);
+    LOG_CRITICAL_IF(ret == -1, "mprotect failed during deinit: {}", get_error_msg());
+#endif
+}
+
 #ifdef _WIN32
 
 static LONG WINAPI exception_handler(PEXCEPTION_POINTERS pExp) noexcept {

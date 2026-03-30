@@ -36,30 +36,11 @@ enum DeviceRotation : int32_t {
     ROTATION_270
 };
 
-#ifdef __ANDROID__
+static DeviceRotation device_native_rotation = ROTATION_0;
 
-#include <SDL3/SDL_system.h>
-
-#include <jni.h>
-
-static DeviceRotation device_native_rotation = ROTATION_UNKNOWN;
-
-static void init_device_orientation() {
-    JNIEnv *env = reinterpret_cast<JNIEnv *>(SDL_GetAndroidJNIEnv());
-    jobject activity = reinterpret_cast<jobject>(SDL_GetAndroidActivity());
-    jclass clazz(env->GetObjectClass(activity));
-
-    jmethodID method_id = env->GetMethodID(clazz, "getNativeDisplayRotation", "()I");
-
-    device_native_rotation = static_cast<DeviceRotation>(env->CallIntMethod(activity, method_id));
-
-    // clean up the local references.
-    env->DeleteLocalRef(activity);
-    env->DeleteLocalRef(clazz);
+void set_display_rotation(int rotation) {
+    device_native_rotation = static_cast<DeviceRotation>(rotation);
 }
-#else
-constexpr DeviceRotation device_native_rotation = ROTATION_0;
-#endif
 
 static uint32_t device_accel_id = 0;
 static uint32_t device_gyro_id = 0;
@@ -94,10 +75,6 @@ static void detect_device_motion_support(MotionState &state) {
     SDL_free(sensors_id);
 
     state.has_device_motion_support = ((device_accel_id != 0) && (device_gyro_id != 0));
-
-#ifdef __ANDROID__
-    init_device_orientation();
-#endif
 }
 
 static std::string device_rotation_to_string(DeviceRotation rotation) {
